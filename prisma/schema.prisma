@@ -1,0 +1,50 @@
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Session {
+  id          String    @id
+  shop        String
+  state       String
+  isOnline    Boolean   @default(false)
+  scope       String?
+  expires     DateTime?
+  accessToken String
+  userId      BigInt?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model MerchantPlan {
+  id                  String   @id @default(cuid())
+  shop                String   @unique
+  plan                String   @default("free")
+  subscriptionId      String?
+  accentColor         String   @default("#309B42")
+  productCategories   String   @default("[]") // JSON: [{id, label, emoji, active}]
+  dietaryFilters      String   @default("[]") // JSON: [{id, label, active}]
+  volumeDiscountTiers String   @default("[]") // JSON: [{min, message}]
+  promoBannerText     String   @default("")
+  promoBannerUrl      String   @default("")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model ProductMeta {
+  id           String   @id @default(cuid())
+  shop         String
+  productId    String   // Shopify product GID
+  productTitle String
+  categories   String   @default("[]") // JSON array of category IDs
+  dietaryTags  String   @default("[]") // JSON array of dietary tag IDs
+  portionSizes String   @default("[]") // JSON: [{label, variantId, price}]
+  updatedAt    DateTime @updatedAt
+
+  @@unique([shop, productId])
+}

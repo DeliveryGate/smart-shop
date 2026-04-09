@@ -1,0 +1,36 @@
+api_version = "2026-07"
+
+[[extensions]]
+type = "theme"
+name = "Smart Shop"
+handle = "smart-shop"
+
+[[extensions.settings.fields]]
+key = "collection_heading"
+type = "text"
+label = "Collection heading"
+
+[[extensions.settings.fields]]
+key = "collection_subheading"
+type = "text"
+label = "Collection subheading"
+
+[[extensions.settings.fields]]
+key = "filter_panel_title"
+type = "text"
+label = "Filter panel title"
+
+[[extensions.settings.fields]]
+key = "filter_panel_subtitle"
+type = "text"
+label = "Filter panel subtitle"
+
+[[extensions.settings.fields]]
+key = "cta_label"
+type = "text"
+label = "Show results button label"
+
+[[extensions.settings.fields]]
+key = "clear_label"
+type = "text"
+label = "Clear filters button label"

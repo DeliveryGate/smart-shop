@@ -1,0 +1,1054 @@
+{%- comment -%}
+  Smart Shop — Dietary Filter Collection
+  Theme App Extension Block
+  Developer: SaltCore | saltai.app | support@saltai.app
+
+  Renders a complete filterable collection page:
+  1. Product type filter tiles (emoji + label, horizontal scroll on mobile)
+  2. Dietary exclusion filter toggles ("Without X" style)
+  3. Product grid with dietary badges and add-to-cart controls
+  4. Volume discount banner (rendered from app config via data attribute)
+  5. Promotional banner slot
+  6. Product count display
+  7. Search bar
+
+  Data is injected via window.__smartShop config populated by the app.
+  Products are pulled from collection.products with dietary/category tags
+  stored as data-attributes (set by app backend via product tags or metafields).
+{%- endcomment -%}
+
+{%- assign ss_heading        = block.settings.collection_heading    | default: collection.title -%}
+{%- assign ss_sub            = block.settings.collection_subheading | default: collection.description | strip_html | truncate: 200 -%}
+{%- assign ss_panel_title    = block.settings.filter_panel_title    | default: "Find food that fits your needs" -%}
+{%- assign ss_panel_sub      = block.settings.filter_panel_subtitle | default: "Choose a product type and dietary needs, then click \"Show matching products\"." -%}
+{%- assign ss_cta            = block.settings.cta_label             | default: "Show matching products" -%}
+{%- assign ss_clear          = block.settings.clear_label           | default: "Clear filters" -%}
+{%- assign ss_per_page       = 200 -%}
+
+<style>
+  .ss-shop {
+    --ss-accent: {{ shop.metafields.smart_shop.accent_color | default: '#309B42' }};
+    max-width: 1680px;
+    margin: 0 auto;
+    padding: 18px 16px 56px;
+    font-family: inherit;
+    color: inherit;
+    background: rgba(0,0,0,0.02);
+    border-radius: 18px;
+  }
+
+  /* Hero intro */
+  .ss-hero {
+    max-width: 1680px;
+    margin: 0 auto 18px;
+    padding: 0 16px;
+  }
+  .ss-hero__inner {
+    background: #fff;
+    border: 1px solid rgba(0,0,0,0.08);
+    border-radius: 18px;
+    padding: 22px 24px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.04);
+    text-align: center;
+  }
+  .ss-hero__title {
+    margin: 0 0 10px;
+    font-size: 28px;
+    line-height: 1.15;
+    font-weight: 850;
+    letter-spacing: -0.02em;
+  }
+  .ss-hero__sub {
+    margin: 0;
+    font-size: 15px;
+    line-height: 1.5;
+    color: rgba(0,0,0,0.72);
+  }
+
+  /* Layout grid */
+  .ss-grid {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    gap: 22px;
+    align-items: start;
+  }
+  @media (max-width: 990px) {
+    .ss-grid { grid-template-columns: 1fr; }
+    .ss-shop { border-radius: 0; background: transparent; }
+  }
+
+  /* Filter sidebar */
+  .ss-sidebar {
+    border: 1px solid rgba(0,0,0,0.08);
+    border-radius: 16px;
+    padding: 16px;
+    background: #fff;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+    position: sticky;
+    top: 120px;
+    display: flex;
+    flex-direction: column;
+  }
+  @media (min-width: 991px) {
+    .ss-sidebar {
+      max-height: calc(100vh - 140px);
+      overflow: hidden;
+    }
+    .ss-sidebar__scroll {
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      padding-bottom: 12px;
+      flex: 1 1 auto;
+      min-height: 0;
+    }
+    .ss-sidebar__actions {
+      flex: 0 0 auto;
+      padding-top: 12px;
+      border-top: 1px solid rgba(0,0,0,0.08);
+      background: #fff;
+    }
+  }
+  @media (max-width: 990px) {
+    .ss-sidebar { position: relative; top: auto; max-height: none; overflow: visible; }
+    .ss-sidebar__scroll { overflow: visible; }
+    .ss-sidebar__actions { margin-top: 14px; }
+  }
+
+  .ss-sidebar__title {
+    margin: 0 0 6px;
+    font-size: 22px;
+    font-weight: 850;
+    letter-spacing: -0.01em;
+    text-align: center;
+  }
+  .ss-sidebar__sub {
+    margin: 0 0 14px;
+    font-size: 13px;
+    color: rgba(0,0,0,0.65);
+    text-align: center;
+    line-height: 1.45;
+  }
+  .ss-sidebar__section {
+    margin: 14px 0 8px;
+    font-size: 13px;
+    font-weight: 850;
+    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: rgba(0,0,0,0.55);
+  }
+
+  /* Filter tiles — 2-col grid */
+  .ss-tiles {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0,1fr));
+    gap: 8px;
+  }
+  .ss-tile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    min-height: 76px;
+    padding: 10px 8px;
+    border: 1.5px solid rgba(0,0,0,0.12);
+    border-radius: 12px;
+    background: #fff;
+    cursor: pointer;
+    user-select: none;
+    font-weight: 850;
+    font-size: 13px;
+    line-height: 1.15;
+    gap: 5px;
+    transition: transform 0.06s ease, box-shadow 0.1s ease, background 0.1s ease, border-color 0.1s ease;
+  }
+  .ss-tile:hover {
+    box-shadow: 0 6px 14px rgba(0,0,0,0.07);
+    transform: translateY(-1px);
+  }
+  .ss-tile.is-active {
+    background: color-mix(in srgb, var(--ss-accent) 12%, #fff);
+    border-color: color-mix(in srgb, var(--ss-accent) 55%, transparent);
+  }
+  .ss-tile__icon { font-size: 18px; line-height: 1; display: block; }
+  .ss-tile__label { display: block; }
+
+  /* Action buttons */
+  .ss-sidebar__actions { display: flex; gap: 8px; }
+  .ss-btn-primary {
+    flex: 1;
+    border: 0;
+    border-radius: 12px;
+    padding: 13px 14px;
+    font-weight: 900;
+    font-size: 14px;
+    cursor: pointer;
+    background: var(--ss-accent);
+    color: #fff;
+    transition: opacity 0.12s;
+  }
+  .ss-btn-primary:hover { opacity: 0.88; }
+  .ss-btn-ghost {
+    min-width: 90px;
+    border: 1.5px solid rgba(0,0,0,0.16);
+    border-radius: 12px;
+    padding: 13px 14px;
+    font-weight: 900;
+    font-size: 14px;
+    cursor: pointer;
+    background: #fff;
+    transition: background 0.1s;
+  }
+  .ss-btn-ghost:hover { background: rgba(0,0,0,0.04); }
+
+  /* Main content area */
+  .ss-main {}
+
+  .ss-products-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin: 0 0 10px;
+  }
+  .ss-count { color: rgba(0,0,0,0.6); font-size: 14px; }
+
+  /* Search bar */
+  .ss-search { margin: 0 0 14px; }
+  .ss-search__inner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: #fff;
+    border: 1px solid rgba(0,0,0,0.08);
+    border-radius: 12px;
+    padding: 10px 16px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.03);
+  }
+  .ss-search__icon { flex-shrink: 0; color: var(--ss-accent); }
+  .ss-search__input {
+    flex: 1; border: none; outline: none;
+    font-size: 15px; font-family: inherit; font-weight: 600;
+    background: transparent; color: #1a1a1a;
+  }
+  .ss-search__input::placeholder { color: #bbb; font-weight: 500; }
+  .ss-search__clear {
+    display: none; align-items: center; justify-content: center;
+    width: 26px; height: 26px; border: none; border-radius: 50%;
+    background: rgba(0,0,0,0.06); font-size: 15px; cursor: pointer;
+    color: #666; flex-shrink: 0;
+  }
+
+  /* Volume discount banner */
+  .ss-vol-banners { margin: 0 0 14px; }
+  .ss-vol-banner {
+    display: flex; align-items: center; gap: 10px;
+    background: linear-gradient(135deg, #e8f5e9 0%, #f2faf4 100%);
+    border: 1px solid rgba(48,155,66,0.2);
+    border-radius: 12px;
+    padding: 12px 18px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+  }
+  .ss-vol-banner__icon { font-size: 18px; flex-shrink: 0; }
+  .ss-vol-banner__text { font-size: 14px; color: #1a1a1a; flex: 1; line-height: 1.4; }
+  @media (max-width: 749px) {
+    .ss-vol-banner { flex-direction: column; align-items: flex-start; gap: 4px; padding: 10px 14px; }
+  }
+
+  /* Promo banner */
+  .ss-promo-banner {
+    display: none;
+    align-items: center; gap: 10px;
+    background: linear-gradient(135deg, #fff3e0 0%, #fff8f0 100%);
+    border: 1px solid rgba(255,152,0,0.25);
+    border-radius: 12px;
+    padding: 12px 18px;
+    margin-bottom: 14px;
+  }
+  .ss-promo-banner.is-visible { display: flex; }
+  .ss-promo-banner__text { font-size: 14px; color: #1a1a1a; flex: 1; line-height: 1.4; }
+  .ss-promo-banner__link {
+    font-size: 13px; font-weight: 700; color: #e67e00;
+    text-decoration: none; white-space: nowrap;
+  }
+  .ss-promo-banner__link:hover { opacity: 0.78; }
+
+  /* Product grid */
+  .ss-product-grid {
+    margin: 0; padding: 0; list-style: none;
+    display: grid; gap: 20px;
+  }
+  @media (min-width: 1400px) { .ss-product-grid { grid-template-columns: repeat(3, minmax(0,1fr)); } }
+  @media (min-width: 760px) and (max-width: 1399px) { .ss-product-grid { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+  @media (max-width: 759px) { .ss-product-grid { grid-template-columns: 1fr; } }
+
+  /* Product card */
+  .ss-card {
+    border: 1px solid rgba(0,0,0,0.08);
+    border-radius: 16px;
+    background: #fff;
+    overflow: hidden;
+    box-shadow: 0 8px 22px rgba(0,0,0,0.04);
+    display: flex; flex-direction: column; height: 100%;
+    transition: box-shadow 0.15s, transform 0.1s;
+  }
+  .ss-card:hover { box-shadow: 0 14px 32px rgba(0,0,0,0.08); transform: translateY(-2px); }
+
+  .ss-card__img {
+    width: 100%; aspect-ratio: 1/1;
+    object-fit: contain; display: block;
+    padding: 14px; background: #f9f9f9;
+  }
+  .ss-card__body {
+    padding: 12px 14px 14px;
+    display: flex; flex-direction: column; gap: 8px; flex: 1;
+  }
+  .ss-card__title {
+    margin: 0; font-size: 15px; font-weight: 900;
+    line-height: 1.2; text-align: center;
+  }
+  .ss-card__title a { color: inherit; text-decoration: none; }
+  .ss-card__title a:hover { text-decoration: underline; }
+  .ss-card__desc {
+    margin: 0; font-size: 13px; color: rgba(0,0,0,0.68);
+    line-height: 1.4; text-align: center; min-height: 36px;
+  }
+
+  /* Dietary badge chips */
+  .ss-chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+  .ss-chip {
+    border: 1px solid rgba(0,0,0,0.12);
+    border-radius: 10px; padding: 5px 8px;
+    font-weight: 800; font-size: 11px; line-height: 1;
+    color: rgba(0,0,0,0.78); background: #fff; white-space: nowrap;
+  }
+  .ss-chip--free {
+    background: color-mix(in srgb, var(--ss-accent) 10%, #fff);
+    border-color: color-mix(in srgb, var(--ss-accent) 35%, transparent);
+    color: color-mix(in srgb, var(--ss-accent) 70%, #000);
+  }
+
+  /* Card bottom */
+  .ss-card__bottom {
+    margin-top: auto; display: flex; flex-direction: column; gap: 8px;
+  }
+  .ss-price { font-weight: 950; font-size: 15px; text-align: center; }
+
+  /* Portion selector */
+  .ss-portions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+  .ss-portion-label { font-size: 11px; font-weight: 900; color: rgba(0,0,0,0.6); text-align: center; }
+  .ss-portion-btn {
+    border: 1.5px solid rgba(0,0,0,0.14);
+    border-radius: 10px; padding: 7px 9px;
+    min-width: 52px; text-align: center;
+    cursor: pointer; background: #fff;
+    font-weight: 950; font-size: 12px;
+    transition: background 0.1s, border-color 0.1s;
+  }
+  .ss-portion-btn.is-active {
+    background: color-mix(in srgb, var(--ss-accent) 10%, #fff);
+    border-color: color-mix(in srgb, var(--ss-accent) 50%, transparent);
+  }
+
+  /* Qty morphing control */
+  .ss-qty { position: relative; }
+  .ss-qty-control { display: flex; }
+  .ss-qty-add {
+    width: 100%; border: 0;
+    border-radius: 12px; padding: 12px;
+    font-weight: 900; font-size: 14px;
+    cursor: pointer;
+    background: var(--ss-accent); color: #fff;
+    transition: opacity 0.1s;
+  }
+  .ss-qty-add:hover { opacity: 0.88; }
+  .ss-qty-stepper {
+    display: none;
+    width: 100%;
+    align-items: center; justify-content: space-between;
+    border: 1.5px solid var(--ss-accent);
+    border-radius: 12px; overflow: hidden;
+  }
+  .ss-qty-control.is-active .ss-qty-add { display: none; }
+  .ss-qty-control.is-active .ss-qty-stepper { display: flex; }
+  .ss-qty-btn {
+    border: 0; background: transparent;
+    width: 44px; height: 44px;
+    font-size: 20px; font-weight: 700;
+    cursor: pointer; color: var(--ss-accent);
+    transition: background 0.1s;
+  }
+  .ss-qty-btn:hover { background: rgba(0,0,0,0.05); }
+  .ss-qty-count {
+    font-weight: 950; font-size: 16px;
+    min-width: 28px; text-align: center;
+  }
+
+  /* No results state */
+  .ss-empty {
+    display: none;
+    text-align: center;
+    padding: 40px 20px;
+    color: rgba(0,0,0,0.55);
+    font-size: 15px;
+  }
+  .ss-empty.is-visible { display: block; }
+  .ss-empty__title { font-weight: 850; font-size: 20px; margin-bottom: 8px; }
+</style>
+
+{%- if collection.description != blank -%}
+<div class="ss-hero">
+  <div class="ss-hero__inner">
+    {%- if ss_heading != blank -%}
+      <h1 class="ss-hero__title">{{ ss_heading }}</h1>
+    {%- endif -%}
+    {%- if ss_sub != blank -%}
+      <p class="ss-hero__sub">{{ ss_sub }}</p>
+    {%- endif -%}
+  </div>
+</div>
+{%- endif -%}
+
+<div
+  class="ss-shop"
+  data-ss-shop
+  data-ss-shop-domain="{{ shop.permanent_domain | escape }}"
+>
+
+  <div class="ss-grid">
+
+    {%- comment -%} ── FILTER SIDEBAR ── {%- endcomment -%}
+    <aside class="ss-sidebar" aria-label="Product filters">
+      <div class="ss-sidebar__scroll">
+        <h2 class="ss-sidebar__title">{{ ss_panel_title }}</h2>
+        <p class="ss-sidebar__sub">{{ ss_panel_sub }}</p>
+
+        <div class="ss-sidebar__section">Product type</div>
+        <div class="ss-tiles" id="ss-category-tiles" role="group" aria-label="Product type filters">
+          {%- comment -%}
+            Tiles are injected by JS from window.__smartShop.categories.
+            This placeholder renders on first paint before JS hydrates.
+          {%- endcomment -%}
+        </div>
+
+        <div class="ss-sidebar__section">Dietary &amp; allergen requirements</div>
+        <div class="ss-tiles" id="ss-dietary-tiles" role="group" aria-label="Dietary filters">
+          {%- comment -%}
+            Tiles are injected by JS from window.__smartShop.dietaryFilters.
+          {%- endcomment -%}
+        </div>
+      </div>
+
+      <div class="ss-sidebar__actions">
+        <button type="button" class="ss-btn-primary" data-ss-apply>{{ ss_cta }}</button>
+        <button type="button" class="ss-btn-ghost" data-ss-clear>{{ ss_clear }}</button>
+      </div>
+    </aside>
+
+    {%- comment -%} ── MAIN CONTENT ── {%- endcomment -%}
+    <section aria-label="Products">
+
+      <div class="ss-products-header">
+        <div class="ss-count" id="ss-count" aria-live="polite">Showing all products</div>
+      </div>
+
+      <div class="ss-search">
+        <div class="ss-search__inner">
+          <svg class="ss-search__icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
+          </svg>
+          <input
+            class="ss-search__input"
+            id="ss-search"
+            type="search"
+            placeholder="Search products..."
+            autocomplete="off"
+            aria-label="Search products"
+          >
+          <button class="ss-search__clear" id="ss-search-clear" type="button" aria-label="Clear search">×</button>
+        </div>
+      </div>
+
+      {%- comment -%} Volume discount banners — rendered by JS {%- endcomment -%}
+      <div class="ss-vol-banners" id="ss-vol-banners"></div>
+
+      {%- comment -%} Promo banner — rendered by JS if configured {%- endcomment -%}
+      <div class="ss-promo-banner" id="ss-promo-banner">
+        <span class="ss-promo-banner__text" id="ss-promo-text"></span>
+        <a class="ss-promo-banner__link" id="ss-promo-link" href="#">View offer →</a>
+      </div>
+
+      {%- paginate collection.products by ss_per_page -%}
+        <ul class="ss-product-grid" id="ss-product-grid" role="list">
+
+          {%- for product in collection.products -%}
+
+            {%- comment -%} Build category slug from product type {%- endcomment -%}
+            {%- assign cat_slug = product.type
+              | downcase | strip
+              | replace: '&', 'and'
+              | replace: ' ', '-'
+              | replace: '--', '-'
+            -%}
+
+            {%- comment -%}
+              Dietary tags: read from product tags using convention "dietary:gluten-free" etc.
+              Also supports legacy tags without prefix.
+            {%- endcomment -%}
+            {%- assign ss_dietary = '' -%}
+            {%- for t in product.tags -%}
+              {%- assign tl = t | downcase | strip -%}
+              {%- if tl == 'gluten-free' or tl == 'dietary:gluten-free' -%}{%- assign ss_dietary = ss_dietary | append: 'gluten-free,' -%}{%- endif -%}
+              {%- if tl == 'nut-free' or tl == 'dietary:nut-free' -%}{%- assign ss_dietary = ss_dietary | append: 'nut-free,' -%}{%- endif -%}
+              {%- if tl == 'dairy-free' or tl == 'dietary:dairy-free' -%}{%- assign ss_dietary = ss_dietary | append: 'dairy-free,' -%}{%- endif -%}
+              {%- if tl == 'egg-free' or tl == 'dietary:egg-free' -%}{%- assign ss_dietary = ss_dietary | append: 'egg-free,' -%}{%- endif -%}
+              {%- if tl == 'soya-free' or tl == 'dietary:soya-free' -%}{%- assign ss_dietary = ss_dietary | append: 'soya-free,' -%}{%- endif -%}
+              {%- if tl == 'vegan' or tl == 'dietary:vegan' -%}{%- assign ss_dietary = ss_dietary | append: 'vegan,' -%}{%- endif -%}
+              {%- if tl == 'halal' or tl == 'dietary:halal' -%}{%- assign ss_dietary = ss_dietary | append: 'halal,' -%}{%- endif -%}
+              {%- if tl == 'sugar-free' or tl == 'dietary:sugar-free' -%}{%- assign ss_dietary = ss_dietary | append: 'sugar-free,' -%}{%- endif -%}
+            {%- endfor -%}
+
+            {%- comment -%} Also check metafields for apps that write dietary data there {%- endcomment -%}
+            {%- if product.metafields.smart_shop.dietary != blank -%}
+              {%- assign ss_dietary = product.metafields.smart_shop.dietary | append: ',' -%}
+            {%- endif -%}
+
+            {%- assign first_avail = product.selected_or_first_available_variant -%}
+            {%- assign desc = product.description | strip_html | strip -%}
+
+            <li
+              class="ss-product-grid__item"
+              data-product-id="{{ product.id }}"
+              data-ss-category="{{ cat_slug | escape }}"
+              data-ss-dietary="{{ ss_dietary | escape }}"
+              data-ss-title="{{ product.title | downcase | escape }}"
+            >
+              <article class="ss-card">
+
+                {%- comment -%} Product image — links to product page {%- endcomment -%}
+                <a href="{{ product.url }}" aria-label="{{ product.title | escape }}" tabindex="-1">
+                  {%- if product.featured_image -%}
+                    <img
+                      class="ss-card__img"
+                      src="{{ product.featured_image | image_url: width: 800 }}"
+                      alt="{{ product.featured_image.alt | default: product.title | escape }}"
+                      loading="lazy"
+                      width="400"
+                      height="400"
+                    >
+                  {%- else -%}
+                    <div class="ss-card__img" style="display:flex;align-items:center;justify-content:center;color:rgba(0,0,0,0.25);font-size:40px;">🛍️</div>
+                  {%- endif -%}
+                </a>
+
+                <div class="ss-card__body">
+
+                  <h3 class="ss-card__title">
+                    <a href="{{ product.url }}">{{ product.title }}</a>
+                  </h3>
+
+                  {%- if desc != blank -%}
+                    <p class="ss-card__desc">{{ desc | truncate: 120 }}</p>
+                  {%- else -%}
+                    <p class="ss-card__desc" aria-hidden="true">&nbsp;</p>
+                  {%- endif -%}
+
+                  {%- comment -%} Dietary badge chips {%- endcomment -%}
+                  <div class="ss-chips" aria-label="Dietary information">
+                    {%- if ss_dietary contains 'gluten-free' -%}<span class="ss-chip ss-chip--free">Gluten-free</span>{%- endif -%}
+                    {%- if ss_dietary contains 'nut-free' -%}<span class="ss-chip ss-chip--free">Nut-free</span>{%- endif -%}
+                    {%- if ss_dietary contains 'dairy-free' -%}<span class="ss-chip ss-chip--free">Dairy-free</span>{%- endif -%}
+                    {%- if ss_dietary contains 'egg-free' -%}<span class="ss-chip">Egg-free</span>{%- endif -%}
+                    {%- if ss_dietary contains 'soya-free' -%}<span class="ss-chip">Soya-free</span>{%- endif -%}
+                    {%- if ss_dietary contains 'vegan' -%}<span class="ss-chip ss-chip--free">Vegan 🌿</span>{%- endif -%}
+                    {%- if ss_dietary contains 'halal' -%}<span class="ss-chip">Halal ☪️</span>{%- endif -%}
+                    {%- if ss_dietary contains 'sugar-free' -%}<span class="ss-chip">Sugar-free</span>{%- endif -%}
+                    {%- comment -%} Allergen-free badge if no dietary concerns noted at all {%- endcomment -%}
+                    {%- if ss_dietary == '' -%}
+                      {%- if product.metafields.smart_shop.allergen_free == 'true' or product.tags contains 'allergen-free' -%}
+                        <span class="ss-chip ss-chip--free">Allergen-Free ✓</span>
+                      {%- endif -%}
+                    {%- endif -%}
+                  </div>
+
+                  <div class="ss-card__bottom">
+
+                    {%- comment -%} Portion selector (shown if product has multiple variants) {%- endcomment -%}
+                    {%- if product.variants.size > 1 -%}
+                      <div data-ss-variants>
+                        <div class="ss-portion-label">Select size</div>
+                        <div class="ss-portions">
+                          {%- for v in product.variants -%}
+                            {%- if v.available -%}
+                              <button
+                                type="button"
+                                class="ss-portion-btn{% if v.id == first_avail.id %} is-active{% endif %}"
+                                data-ss-variant-btn
+                                data-variant-id="{{ v.id }}"
+                                aria-pressed="{% if v.id == first_avail.id %}true{% else %}false{% endif %}"
+                              >{{ v.title }}</button>
+                            {%- endif -%}
+                          {%- endfor -%}
+                        </div>
+                      </div>
+                    {%- endif -%}
+
+                    {%- comment -%} Price {%- endcomment -%}
+                    <div class="ss-price" data-ss-price>
+                      {%- if product.price_varies -%}
+                        {{ product.price_min | money }} – {{ product.price_max | money }}
+                      {%- else -%}
+                        {{ product.price | money }}
+                      {%- endif -%}
+                    </div>
+
+                    {%- comment -%} Add-to-cart morphing control {%- endcomment -%}
+                    <div class="ss-qty" data-ss-qty>
+                      <div class="ss-qty-control" data-ss-qty-control>
+                        <button type="button" class="ss-qty-add" data-ss-qty-add aria-label="Add {{ product.title | escape }} to cart">
+                          Add to cart
+                        </button>
+                        <div class="ss-qty-stepper" data-ss-qty-stepper aria-label="Quantity">
+                          <button type="button" class="ss-qty-btn" data-ss-qty-minus aria-label="Decrease quantity">−</button>
+                          <span class="ss-qty-count" data-ss-qty-count aria-live="polite">1</span>
+                          <button type="button" class="ss-qty-btn" data-ss-qty-plus aria-label="Increase quantity">+</button>
+                        </div>
+                      </div>
+                      <input type="hidden" value="{{ first_avail.id }}" data-ss-variant-input>
+                    </div>
+
+                  </div>{%- comment -%} .ss-card__bottom {%- endcomment -%}
+                </div>{%- comment -%} .ss-card__body {%- endcomment -%}
+              </article>
+            </li>
+
+          {%- endfor -%}
+        </ul>
+
+        <div class="ss-empty" id="ss-empty">
+          <div class="ss-empty__title">No products match your filters</div>
+          <p>Try selecting fewer filters, or <button type="button" style="background:none;border:none;cursor:pointer;text-decoration:underline;font-size:inherit;color:inherit;" data-ss-clear>clear all filters</button> to see everything.</p>
+        </div>
+
+      {%- endpaginate -%}
+
+    </section>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ─── Config injected by Smart Shop app backend ────────────────────────── */
+  var CONFIG = (typeof window.__smartShop !== 'undefined') ? window.__smartShop : {
+    categories: [
+      { id: 'breakfast',    label: 'Breakfast',    emoji: '🍳' },
+      { id: 'sandwiches',   label: 'Sandwiches',   emoji: '🥪' },
+      { id: 'salads',       label: 'Salads',       emoji: '🥗' },
+      { id: 'hot-meals',    label: 'Hot Meals',    emoji: '🍲' },
+      { id: 'sweet-treats', label: 'Sweet Treats', emoji: '🧁' },
+      { id: 'drinks',       label: 'Drinks',       emoji: '🥤' },
+      { id: 'snacks',       label: 'Snacks',       emoji: '🍪' },
+      { id: 'platters',     label: 'Platters',     emoji: '🍱' },
+    ],
+    dietaryFilters: [
+      { id: 'gluten-free', label: 'Without gluten', icon: '🌾🚫' },
+      { id: 'nut-free',    label: 'Without nuts',   icon: '🥜🚫' },
+      { id: 'dairy-free',  label: 'Without dairy',  icon: '🥛🚫' },
+      { id: 'egg-free',    label: 'Without egg',    icon: '🥚🚫' },
+      { id: 'soya-free',   label: 'Without soya',   icon: '🌱🚫' },
+      { id: 'vegan',       label: 'Vegan',          icon: '🌿'   },
+      { id: 'halal',       label: 'Halal',          icon: '☪️'   },
+    ],
+    volumeDiscountTiers: [],
+    promoBannerText: '',
+    promoBannerUrl: '',
+  };
+
+  /* ─── Build filter tiles ────────────────────────────────────────────────── */
+  function buildTiles(containerId, items, filterType) {
+    var container = document.getElementById(containerId);
+    if (!container) return;
+    var html = '';
+    for (var i = 0; i < items.length; i++) {
+      var item = items[i];
+      html += '<button type="button" class="ss-tile"'
+        + ' data-ss-filter="' + filterType + '"'
+        + ' data-ss-value="' + item.id + '"'
+        + ' aria-pressed="false">'
+        + '<span class="ss-tile__label">' + item.label + '</span>'
+        + '<span class="ss-tile__icon" aria-hidden="true">' + (item.emoji || item.icon || '') + '</span>'
+        + '</button>';
+    }
+    container.innerHTML = html;
+  }
+
+  buildTiles('ss-category-tiles', CONFIG.categories, 'category');
+  buildTiles('ss-dietary-tiles', CONFIG.dietaryFilters, 'dietary');
+
+  /* ─── Render volume discount banners ────────────────────────────────────── */
+  var volContainer = document.getElementById('ss-vol-banners');
+  if (volContainer && CONFIG.volumeDiscountTiers && CONFIG.volumeDiscountTiers.length > 0) {
+    var volHtml = '';
+    for (var vi = 0; vi < CONFIG.volumeDiscountTiers.length; vi++) {
+      var tier = CONFIG.volumeDiscountTiers[vi];
+      if (tier.message) {
+        volHtml += '<div class="ss-vol-banner">'
+          + '<span class="ss-vol-banner__icon" aria-hidden="true">🎉</span>'
+          + '<span class="ss-vol-banner__text">' + tier.message + '</span>'
+          + '</div>';
+      }
+    }
+    volContainer.innerHTML = volHtml;
+  }
+
+  /* ─── Promo banner ──────────────────────────────────────────────────────── */
+  if (CONFIG.promoBannerText) {
+    var promoBanner = document.getElementById('ss-promo-banner');
+    var promoText = document.getElementById('ss-promo-text');
+    var promoLink = document.getElementById('ss-promo-link');
+    if (promoBanner && promoText) {
+      promoText.textContent = CONFIG.promoBannerText;
+      if (promoLink && CONFIG.promoBannerUrl) {
+        promoLink.href = CONFIG.promoBannerUrl;
+        promoLink.style.display = '';
+      } else if (promoLink) {
+        promoLink.style.display = 'none';
+      }
+      promoBanner.classList.add('is-visible');
+    }
+  }
+
+  /* ─── Filter state ──────────────────────────────────────────────────────── */
+  var activeCategories = [];
+  var activeDietary    = [];
+  var searchQuery      = '';
+  var applied          = false;
+
+  function getCards() {
+    return Array.prototype.slice.call(
+      document.querySelectorAll('.ss-product-grid__item')
+    );
+  }
+
+  function updateCount(visible, total) {
+    var countEl = document.getElementById('ss-count');
+    if (!countEl) return;
+    if (!applied && !searchQuery) {
+      countEl.textContent = 'Showing all ' + total + ' product' + (total !== 1 ? 's' : '');
+    } else {
+      countEl.textContent = 'Showing ' + visible + ' of ' + total + ' product' + (total !== 1 ? 's' : '');
+    }
+  }
+
+  function applyFilters() {
+    var cards = getCards();
+    var visible = 0;
+
+    for (var i = 0; i < cards.length; i++) {
+      var card = cards[i];
+      var cardCategory = (card.getAttribute('data-ss-category') || '').toLowerCase();
+      var cardDietary  = (card.getAttribute('data-ss-dietary') || '').toLowerCase();
+      var cardTitle    = (card.getAttribute('data-ss-title') || '').toLowerCase();
+
+      var catMatch = activeCategories.length === 0;
+      if (!catMatch) {
+        for (var ci = 0; ci < activeCategories.length; ci++) {
+          if (cardCategory === activeCategories[ci]) { catMatch = true; break; }
+        }
+      }
+
+      /* Exclusion: product MUST have all required dietary tags */
+      var dietMatch = true;
+      for (var di = 0; di < activeDietary.length; di++) {
+        if (cardDietary.indexOf(activeDietary[di]) === -1) { dietMatch = false; break; }
+      }
+
+      var searchMatch = !searchQuery
+        || cardTitle.indexOf(searchQuery) > -1
+        || cardDietary.indexOf(searchQuery) > -1
+        || cardCategory.indexOf(searchQuery) > -1;
+
+      var show = catMatch && dietMatch && searchMatch;
+      card.style.display = show ? '' : 'none';
+      if (show) visible++;
+    }
+
+    var empty = document.getElementById('ss-empty');
+    if (empty) empty.classList.toggle('is-visible', visible === 0);
+
+    updateCount(visible, cards.length);
+  }
+
+  /* ─── Tile toggle ───────────────────────────────────────────────────────── */
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest('[data-ss-filter]');
+    if (!btn) return;
+
+    var filterType = btn.getAttribute('data-ss-filter');
+    var value      = btn.getAttribute('data-ss-value');
+    var isActive   = btn.classList.contains('is-active');
+
+    btn.classList.toggle('is-active', !isActive);
+    btn.setAttribute('aria-pressed', isActive ? 'false' : 'true');
+
+    if (filterType === 'category') {
+      if (isActive) {
+        activeCategories = activeCategories.filter(function (v) { return v !== value; });
+      } else {
+        activeCategories.push(value);
+      }
+    } else if (filterType === 'dietary') {
+      if (isActive) {
+        activeDietary = activeDietary.filter(function (v) { return v !== value; });
+      } else {
+        activeDietary.push(value);
+      }
+    }
+  });
+
+  /* ─── Apply / Clear buttons ─────────────────────────────────────────────── */
+  document.addEventListener('click', function (e) {
+    if (e.target.closest('[data-ss-apply]')) {
+      applied = true;
+      applyFilters();
+    }
+    if (e.target.closest('[data-ss-clear]')) {
+      applied = false;
+      activeCategories = [];
+      activeDietary    = [];
+      searchQuery      = '';
+      var searchInput = document.getElementById('ss-search');
+      if (searchInput) searchInput.value = '';
+      var clearBtn = document.getElementById('ss-search-clear');
+      if (clearBtn) clearBtn.style.display = 'none';
+      document.querySelectorAll('.ss-tile.is-active').forEach(function (t) {
+        t.classList.remove('is-active');
+        t.setAttribute('aria-pressed', 'false');
+      });
+      applyFilters();
+    }
+  });
+
+  /* ─── Search bar ────────────────────────────────────────────────────────── */
+  var searchInput = document.getElementById('ss-search');
+  var searchClear = document.getElementById('ss-search-clear');
+  if (searchInput) {
+    searchInput.addEventListener('input', function () {
+      searchQuery = (searchInput.value || '').toLowerCase().trim();
+      if (searchClear) searchClear.style.display = searchQuery ? 'inline-flex' : 'none';
+      applyFilters();
+    });
+  }
+  if (searchClear) {
+    searchClear.addEventListener('click', function () {
+      if (searchInput) searchInput.value = '';
+      searchQuery = '';
+      searchClear.style.display = 'none';
+      applyFilters();
+    });
+  }
+
+  /* ─── Add-to-cart morphing qty control ──────────────────────────────────── */
+  var CART_URL   = '/cart.js';
+  var UPDATE_URL = '/cart/update.js';
+  var qtyCache   = Object.create(null);
+
+  function toInt(v, fb) {
+    var n = parseInt(String(v), 10);
+    return Number.isFinite(n) ? n : (fb || 0);
+  }
+
+  function emitCartUpdated(cart) {
+    try { document.dispatchEvent(new CustomEvent('smart-shop:cart-updated', { detail: { cart: cart } })); } catch (_) {}
+  }
+
+  function rebuildCache(cart) {
+    for (var k in qtyCache) delete qtyCache[k];
+    if (!cart || !cart.items) return;
+    for (var i = 0; i < cart.items.length; i++) {
+      var it = cart.items[i];
+      var vid = toInt(it.variant_id, 0);
+      if (vid) qtyCache[vid] = toInt(it.quantity, 0);
+    }
+  }
+
+  function fetchCart() {
+    return fetch(CART_URL, { credentials: 'same-origin' }).then(function (r) {
+      if (!r.ok) throw new Error('cart fetch failed');
+      return r.json();
+    });
+  }
+
+  function setVariantQty(variantId, qty) {
+    var updates = {};
+    updates[String(variantId)] = Math.max(0, toInt(qty, 0));
+    return fetch(UPDATE_URL, {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ updates: updates }),
+    }).then(function (r) {
+      if (!r.ok) throw new Error('update failed');
+      return r.json();
+    });
+  }
+
+  function getVariantId(qtyRoot) {
+    var input = qtyRoot.querySelector('[data-ss-variant-input]');
+    return input ? toInt(input.value, 0) : 0;
+  }
+  function setVariantId(qtyRoot, vid) {
+    var input = qtyRoot.querySelector('[data-ss-variant-input]');
+    if (input) input.value = String(vid);
+  }
+
+  function setQtyUI(qtyRoot, qty) {
+    var control = qtyRoot.querySelector('[data-ss-qty-control]');
+    var count   = qtyRoot.querySelector('[data-ss-qty-count]');
+    if (!control || !count) return;
+    var q = Math.max(0, toInt(qty, 0));
+    control.classList.toggle('is-active', q > 0);
+    count.textContent = q > 0 ? String(q) : '1';
+  }
+
+  function wireCard(card) {
+    var qtyRoot = card.querySelector('[data-ss-qty]');
+    if (!qtyRoot) return;
+
+    var addBtn   = qtyRoot.querySelector('[data-ss-qty-add]');
+    var plusBtn  = qtyRoot.querySelector('[data-ss-qty-plus]');
+    var minusBtn = qtyRoot.querySelector('[data-ss-qty-minus]');
+    var varBtns  = card.querySelectorAll('[data-ss-variant-btn]');
+    var busy = false;
+
+    function renderFromCache() {
+      setQtyUI(qtyRoot, qtyCache[getVariantId(qtyRoot)] || 0);
+    }
+
+    function syncSet(vid, nextQty) {
+      if (!vid) return;
+      var opt = Math.max(0, toInt(nextQty, 0));
+      qtyCache[vid] = opt;
+      setQtyUI(qtyRoot, opt);
+      if (busy) return;
+      busy = true;
+      setVariantQty(vid, opt)
+        .then(function (cart) {
+          rebuildCache(cart);
+          var actual = qtyCache[vid] || 0;
+          if (actual !== opt) renderFromCache();
+          emitCartUpdated(cart);
+        })
+        .catch(function () {
+          fetchCart().then(function (cart) {
+            rebuildCache(cart);
+            renderFromCache();
+            emitCartUpdated(cart);
+          }).catch(function () {});
+        })
+        .finally(function () { busy = false; });
+    }
+
+    /* Variant selector */
+    for (var i = 0; i < varBtns.length; i++) {
+      varBtns[i].addEventListener('click', function (e) {
+        e.preventDefault(); e.stopPropagation();
+        var btn = e.currentTarget;
+        var vid = toInt(btn.getAttribute('data-variant-id'), 0);
+        if (!vid) return;
+        for (var j = 0; j < varBtns.length; j++) {
+          varBtns[j].classList.toggle('is-active', varBtns[j] === btn);
+          varBtns[j].setAttribute('aria-pressed', varBtns[j] === btn ? 'true' : 'false');
+        }
+        setVariantId(qtyRoot, vid);
+        renderFromCache();
+      }, { capture: true });
+    }
+
+    if (addBtn) addBtn.addEventListener('click', function (e) {
+      e.preventDefault(); e.stopPropagation();
+      var vid = getVariantId(qtyRoot);
+      if (!vid) return;
+      var cur = qtyCache[vid] || 0;
+      syncSet(vid, cur > 0 ? cur : 1);
+    }, { capture: true });
+
+    if (plusBtn) plusBtn.addEventListener('click', function (e) {
+      e.preventDefault(); e.stopPropagation();
+      var vid = getVariantId(qtyRoot);
+      if (!vid) return;
+      syncSet(vid, (qtyCache[vid] || 0) + 1);
+    }, { capture: true });
+
+    if (minusBtn) minusBtn.addEventListener('click', function (e) {
+      e.preventDefault(); e.stopPropagation();
+      var vid = getVariantId(qtyRoot);
+      if (!vid) return;
+      syncSet(vid, Math.max(0, (qtyCache[vid] || 0) - 1));
+    }, { capture: true });
+
+    renderFromCache();
+  }
+
+  /* ─── Init cart sync ─────────────────────────────────────────────────────── */
+  fetchCart().then(function (cart) {
+    rebuildCache(cart);
+    var cards = document.querySelectorAll('.ss-card');
+    for (var i = 0; i < cards.length; i++) wireCard(cards[i]);
+    emitCartUpdated(cart);
+    applyFilters();
+  }).catch(function () {
+    var cards = document.querySelectorAll('.ss-card');
+    for (var i = 0; i < cards.length; i++) wireCard(cards[i]);
+    applyFilters();
+  });
+
+})();
+</script>
+
+{% schema %}
+{
+  "name": "Smart Shop",
+  "target": "section",
+  "settings": [
+    {
+      "type": "text",
+      "id": "collection_heading",
+      "label": "Collection heading",
+      "info": "Defaults to collection title if empty"
+    },
+    {
+      "type": "textarea",
+      "id": "collection_subheading",
+      "label": "Collection subheading",
+      "info": "Short description shown below the heading"
+    },
+    {
+      "type": "text",
+      "id": "filter_panel_title",
+      "label": "Filter panel title",
+      "default": "Find food that fits your needs"
+    },
+    {
+      "type": "textarea",
+      "id": "filter_panel_subtitle",
+      "label": "Filter panel subtitle",
+      "default": "Choose a product type and dietary needs, then click \"Show matching products\"."
+    },
+    {
+      "type": "text",
+      "id": "cta_label",
+      "label": "Show results button label",
+      "default": "Show matching products"
+    },
+    {
+      "type": "text",
+      "id": "clear_label",
+      "label": "Clear filters button label",
+      "default": "Clear filters"
+    }
+  ]
+}
+{% endschema %}
